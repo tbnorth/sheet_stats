@@ -51,6 +51,9 @@ def get_options(args=None):
 def proc_row(row):
     """proc_row - process a row to floats, or explain why not
 
+    openpyxl uses the same type code, 'n', for numeric and null:
+    http://openpyxl.readthedocs.io/en/default/api/openpyxl.cell.cell.html
+
     :param spreadsheet row row: row to process
     :return: [floats], [0/1 floats], [0/1 blanks], [0/1 bad]
     :rtype: <|return type|>
@@ -60,25 +63,20 @@ def proc_row(row):
     counts = []
     blanks = []
     bad = []
-    
+
     for cell in row:
-        if cell.value is None or str(cell.value).strip() == '':
-            floats.append(None)
-            counts.append(0)
-            blanks.append(1)
+        if cell.data_type == 'n':
+            floats.append(cell.value)
+            c, b = (0, 1) if cell.value is None else (1, 0)
+            counts.append(c)
+            blanks.append(b)
             bad.append(0)
         else:
-            try:
-                x = float(cell.value)
-                floats.append(x)
-                counts.append(1)
-                blanks.append(0)
-                bad.append(0)
-            except ValueError:
-                floats.append(None)
-                counts.append(0)
-                blanks.append(0)
-                bad.append(1)
+            floats.append(None)
+            counts.append(0)
+            blanks.append(0)
+            bad.append(1)
+
     return floats, counts, blanks, bad
                 
 
