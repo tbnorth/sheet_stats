@@ -31,6 +31,13 @@ def make_parser():
         help="Files to process, '*' patterns expanded."
     )
 
+    requiredNamed = parser.add_argument_group('required named arguments')
+
+    requiredNamed.add_argument("--output", nargs=1,
+        help="Path to .csv file for output, will be overwritten",
+        metavar='FILE'
+    )
+
     return parser
 
 def get_options(args=None):
@@ -49,36 +56,56 @@ def get_options(args=None):
     opt = make_parser().parse_args(args)
 
     # modifications / validations go here
+    
+    if not opt.output:
+        print "No --output supplied"
+        exit(10)
+    opt.output = opt.output[0]
 
     return opt
 
 def proc_file(filepath):
+    """
+    proc_file - process one .xlsx file
+
+    :param str filepath: path to file
+    :return: list of lists, rows of info. as expected in main()
+    """
 
     print filepath
 
+    # get the first sheet
     wb = load_workbook(filename=filepath, read_only=True)
     sheets = wb.get_sheet_names()
     ws = wb[sheets[0]]
     row0 = next(ws.rows)
+    # get field names from the first row
     fields = [i.value for i in row0]
 
     cols = len(fields)
 
+    # pre-allocate vectors to store sums / counts
     n = np.zeros(cols, dtype=int)
     sums = np.zeros(cols)
     sumssq = np.zeros(cols)
     blank = np.zeros(cols, dtype=int)
     bad = np.zeros(cols, dtype=int)
+    # init. mins/maxs with invalid value for later calc.
     mins = np.zeros(cols) + np.nan
     maxs = np.zeros(cols) + np.nan
 
     rows = 0
 
     for row in ws.rows:
-        if rows % 1000 == 0:
+
+        if rows % 1000 == 0:  # feedback every 1000 rows
             print rows
+            # Much cleaner to exit by creating a file called "STOP" in the
+            # local directory than to try and use Ctrl-C, when using
+            # multiprocessing.  Save time by checking only every 1000 rows.
             if os.path.exists("STOP"):
                 return
+
         rows += 1
 
         for cell_n, cell in enumerate(row):
@@ -90,10 +117,12 @@ def proc_file(filepath):
                     sums[cell_n] += x
                     sumssq[cell_n] += x*x
                     n[cell_n] += 1
+                    # min is x if no value seen yet, else min(prev-min, x)
                     if np.isnan(mins[cell_n]):
                         mins[cell_n] = x
                     else:
                         mins[cell_n] = min(mins[cell_n], x)
+                    # as for min
                     if np.isnan(maxs[cell_n]):
                         maxs[cell_n] = x
                     else:
@@ -103,6 +132,7 @@ def proc_file(filepath):
 
     assert sum(n) + sum(blank) + sum(bad) == rows * len(fields)
 
+    # rearrange vectors into table form
     ans = []
     for i in range(len(fields)):
         ans.append([
@@ -110,7 +140,6 @@ def proc_file(filepath):
             mins[i], maxs[i], n[i], blank[i], bad[i]
         ])
     return ans
-
 def main():
 
     opt = get_options()
@@ -120,15 +149,19 @@ def main():
     for filepath in opt.files:
         files.extend(glob.glob(filepath))
 
+    # create a pool of processors
     pool = multiprocessing.Pool(multiprocessing.cpu_count()-1)
 
+    # process file list with processor pool
     answers = pool.map(proc_file, files)
 
     fields = [
         'file', 'field', 'sum', 'sumsq', 'min', 'max', 'n', 'blank', 'bad'
     ]
 
-    writer = csv.writer(open("stats.csv", 'wb'))
+    # dump results, file open mode 'wb' (write binary) to avoid blank lines
+    # when Excel reads .csv
+    writer = csv.writer(open(opt.output, 'wb'))
     writer.writerow(fields)
     for answer in answers:
         assert len(answer[0]) == len(fields), (len(answer[0]), len(fields))
@@ -136,5 +169,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
