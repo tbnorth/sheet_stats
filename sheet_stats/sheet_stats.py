@@ -1,7 +1,7 @@
 """
 sheet_stats.py - report column stats for spreadsheets
 
-requires 'openpyxl'
+requires openpyxl and numpy
 
 Terry N. Brown, terrynbrown@gmail.com, Fri Dec 16 13:20:47 2016
 """
@@ -13,6 +13,8 @@ import sys
 from collections import namedtuple, defaultdict
 
 from openpyxl import load_workbook
+
+import numpy as np
 
 def make_parser():
     """build an argparse.ArgumentParser, don't call this directly,
@@ -48,40 +50,6 @@ def get_options(args=None):
 
     return opt
 
-def proc_row(row):
-    """proc_row - process a row to floats, or explain why not
-
-    :param spreadsheet row row: row to process
-    :return: [floats], [0/1 floats], [0/1 blanks], [0/1 bad]
-    :rtype: <|return type|>
-    """
-
-    floats = []
-    counts = []
-    blanks = []
-    bad = []
-    
-    for cell in row:
-        if cell.value is None or str(cell.value).strip() == '':
-            floats.append(None)
-            counts.append(0)
-            blanks.append(1)
-            bad.append(0)
-        else:
-            try:
-                x = float(cell.value)
-                floats.append(x)
-                counts.append(1)
-                blanks.append(0)
-                bad.append(0)
-            except ValueError:
-                floats.append(None)
-                counts.append(0)
-                blanks.append(0)
-                bad.append(1)
-    return floats, counts, blanks, bad
-                
-
 def main():
 
     opt = get_options()
@@ -98,22 +66,51 @@ def main():
         ws = wb[sheets[0]]
         row0 = next(ws.rows)
         fields = [i.value for i in row0]
-        zeros = lambda: [0]*len(fields)
         
-        n = zeros()
-        sums = zeros()
-        sumsq = zeros()
-        blanks = zeros()
-        nonfloat = zeros()
+        cols = len(fields)
+        
+        n = np.zeros(cols, dtype=int)
+        sums = np.zeros(cols)
+        sumssq = np.zeros(cols)
+        blank = np.zeros(cols, dtype=int)
+        bad = np.zeros(cols, dtype=int)
+        mins = np.zeros(cols) + np.nan
+        maxs = np.zeros(cols) + np.nan
+
         rows = 0
 
         for row in ws.rows:
             rows += 1
             if rows % 1000 == 0:
                 print rows
-            x, floats, blank, bad = proc_row(row)
+
+            for cell_n, cell in enumerate(row):
+                if cell.value is None or str(cell.value).strip() == '':
+                    blank[cell_n] +=1
+                else:
+                    try:
+                        x = float(cell.value)
+                        sums[cell_n] += x
+                        sumssq[cell_n] += x*x
+                        n[cell_n] += 1
+                        if np.isnan(mins[cell_n]):
+                            mins[cell_n] = x
+                        else:
+                            mins[cell_n] = min(mins[cell_n], x)
+                        if np.isnan(maxs[cell_n]):
+                            maxs[cell_n] = x
+                        else:
+                            maxs[cell_n] = max(maxs[cell_n], x)
+                    except ValueError:
+                        bad[cell_n] += 1
+
             if rows > 3000:
                 break
+
+        assert sum(n) + sum(blank) + sum(bad) == rows * len(fields)
+
+        for i in range(len(fields)):
+            print fields[i], sums[i], sumssq[i], mins[i], maxs[i], n[i], blank[i], bad[i]
 
 if __name__ == '__main__':
     main()
