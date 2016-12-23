@@ -4,6 +4,8 @@ sheet_stats.py - report column stats for spreadsheets
 requires openpyxl and numpy
 
 Terry N. Brown, terrynbrown@gmail.com, Fri Dec 16 13:20:47 2016
+2016-12-23 Henry Helgen updated to Python 3.5 syntax including print() and
+                        writer = csv.writer(open(opt.output, 'w', newline=''))
 """
 
 import csv
@@ -58,7 +60,7 @@ def get_options(args=None):
     # modifications / validations go here
     
     if not opt.output:
-        print "No --output supplied"
+        print ("No --output supplied")
         exit(10)
     opt.output = opt.output[0]
 
@@ -72,7 +74,7 @@ def proc_file(filepath):
     :return: list of lists, rows of info. as expected in main()
     """
 
-    print filepath
+    print (filepath)
 
     # get the first sheet
     wb = load_workbook(filename=filepath, read_only=True)
@@ -85,9 +87,9 @@ def proc_file(filepath):
     cols = len(fields)
 
     # pre-allocate vectors to store sums / counts
-    n = np.zeros(cols, dtype=int)
-    sums = np.zeros(cols)
-    sumssq = np.zeros(cols)
+    n = np.zeros(cols, dtype=int) #count
+    sums = np.zeros(cols) #sum
+    sumssq = np.zeros(cols) #sum of squares
     blank = np.zeros(cols, dtype=int)
     bad = np.zeros(cols, dtype=int)
     # init. mins/maxs with invalid value for later calc.
@@ -99,7 +101,7 @@ def proc_file(filepath):
     for row in ws.rows:
 
         if rows % 1000 == 0:  # feedback every 1000 rows
-            print rows
+            print (rows)
             # Much cleaner to exit by creating a file called "STOP" in the
             # local directory than to try and use Ctrl-C, when using
             # multiprocessing.  Save time by checking only every 1000 rows.
@@ -161,7 +163,9 @@ def main():
 
     # dump results, file open mode 'wb' (write binary) to avoid blank lines
     # when Excel reads .csv
-    writer = csv.writer(open(opt.output, 'wb'))
+    # wb confuses Python 2.7 versus Python 3.5 TypeError: a bytes-like object is required, not 'str'
+    # changed back to 'w'. added newline='' to avoid blank lines
+    writer = csv.writer(open(opt.output, 'w', newline=''))
     writer.writerow(fields)
     for answer in answers:
         assert len(answer[0]) == len(fields), (len(answer[0]), len(fields))
