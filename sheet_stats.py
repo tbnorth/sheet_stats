@@ -4,7 +4,8 @@ sheet_stats.py - report column stats for spreadsheets
 requires openpyxl and numpy
 
 Terry N. Brown, terrynbrown@gmail.com, Fri Dec 16 13:20:47 2016
-2016-12-26 Henry Helgen added average to output 
+2016-12-26 Henry Helgen added average, variance, standard deviation,
+                        coefficient of variation to output 
 2016-12-23 Henry Helgen updated to Python 3.5 syntax including print() and
                         writer = csv.writer(open(opt.output, 'w', newline=''))
 """
