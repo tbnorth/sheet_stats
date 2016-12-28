@@ -171,9 +171,6 @@ def proc_file(filepath):
 
     assert sum(n) + sum(blank) + sum(bad) == rows * len(fields)
 
-
-    # stddev   =  sqrt(variance)
-
     # rearrange vectors into table form
     # compute the derived values
     ans = []
