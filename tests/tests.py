@@ -48,7 +48,9 @@ def get_answers(filepath):
 
     # get the results from the second sheet
     ws = wb[sheets[1]]
+    count = 0
     for row in ws.rows:
+        count += 1
         values = [i.value for i in row]
         parameter = values[-1]  # min, mean etc.
         values = values[:-1]
@@ -91,6 +93,7 @@ class TestSheetStats(unittest.TestCase):
 
             from sheet_stats import main
             main()
+            checks = 0
             with open(temp_file) as result:
                 reader = csv.reader(result)
                 fields = next(reader)
@@ -100,9 +103,19 @@ class TestSheetStats(unittest.TestCase):
                         current_file = row[0]
                         results = get_answers(current_file)
                         parameters = list(results[next(iter(results))])
+                    blank = int(row[fields.index('blank')])
+                    bad = int(row[fields.index('bad')])
+                    chk_variance = blank == 0 and bad == 0
                     for parameter, value in zip(fields[2:], row[2:]):  # skip path and field name
-                        if parameter in parameters:  # skip blank, bad, etc.
-                            field = row[1].decode('utf-8') if PYTHON_2 else row[1]
+                        field = row[1].decode('utf-8') if PYTHON_2 else row[1]
+                        check = parameter in parameters  # skip blank, bad, etc.
+                        check = check and (
+                            # Excel include blanks in variance calc., so skip those cases
+                            chk_variance or
+                            parameter not in ('std', 'variance', 'coefvar')
+                        )
+                        if check:
+                            checks += 1
                             self.assertTrue(
                                 np.isclose(results[field][parameter], float(value)),
                                 msg="%s %s %s %s" % (
@@ -110,6 +123,7 @@ class TestSheetStats(unittest.TestCase):
                                     results[field][parameter], value
                                 )
                             )
+            print(checks)
 
 if __name__ == '__main__':
     unittest.main()

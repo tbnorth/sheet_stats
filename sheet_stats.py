@@ -121,7 +121,8 @@ def proc_file(filepath):
     wb = load_workbook(filename=filepath, read_only=True)
     sheets = wb.get_sheet_names()
     ws = wb[sheets[0]]
-    row0 = next(ws.rows)
+    row_source = ws.rows
+    row0 = next(row_source)
     # get field names from the first row
     fields = [i.value for i in row0]
 
@@ -139,7 +140,7 @@ def proc_file(filepath):
 
     rows = 0
 
-    for row in ws.rows:
+    for row in row_source:
 
         if rows % 1000 == 0:  # feedback every 1000 rows
             print (rows)
