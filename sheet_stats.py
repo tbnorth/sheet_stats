@@ -23,6 +23,8 @@ from openpyxl import load_workbook
 import numpy as np
 
 PYTHON_2 = sys.version_info[0] < 3
+if not PYTHON_2:
+    unicode = str
 def make_parser():
     """build an argparse.ArgumentParser, don't call this directly,
        call get_options() instead.
@@ -77,14 +79,14 @@ def get_aggregate(psumsqn, psumn, pcountn):
     # note pcountn means the full list n,  not a sample n - 1
 
     :param sum of squares, sum, count
-    :return: a tuple of floats   average, variance, standard deviation, coefficient of variation
+    :return: a tuple of floats   mean, variance, standard deviation, coefficient of variation
     """
     # validate inputs check for count == 0
     if pcountn == 0:
         avg, var, std, coefvar = np.nan, np.nan, np.nan, np.nan
     else:
         
-        avg = psumn / pcountn # average
+        avg = psumn / pcountn # mean
 
         # compute variance from sum squared without knowing mean while summing
         var = (psumsqn - (psumn * psumn) / pcountn ) / pcountn # variance
@@ -150,7 +152,7 @@ def proc_file(filepath):
         rows += 1
 
         for cell_n, cell in enumerate(row):
-            if cell.value is None or str(cell.value).strip() == '':
+            if cell.value is None or unicode(cell.value).strip() == '':
                 blank[cell_n] +=1
             else:
                 try:
@@ -199,7 +201,7 @@ def main():
     answers = pool.map(proc_file, files)
 
     fields = [
-        'file', 'field', 'average', 'sum', 'sumsq', 'min', 'max', 'n', 'variance', 'std', 'coefvar', 'blank', 'bad'
+        'file', 'field', 'mean', 'sum', 'sumsq', 'min', 'max', 'n', 'variance', 'std', 'coefvar', 'blank', 'bad'
     ]
 
     # csv.writer does its own EOL handling,
@@ -214,7 +216,13 @@ def main():
         writer.writerow(fields)
         for answer in answers:
             assert len(answer[0]) == len(fields), (len(answer[0]), len(fields))
-            writer.writerows(answer)
+            if PYTHON_2:
+                writer.writerows(
+                    [unicode(col).encode('utf-8') for col in row]
+                    for row in answer
+                )
+            else:
+                writer.writerows(answer)
 
 if __name__ == '__main__':
     main()
