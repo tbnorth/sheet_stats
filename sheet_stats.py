@@ -4,6 +4,8 @@ sheet_stats.py - report column stats for spreadsheets
 requires openpyxl and numpy
 
 Terry N. Brown, terrynbrown@gmail.com, Fri Dec 16 13:20:47 2016
+2016-12-26 Henry Helgen added average, variance, standard deviation,
+                        coefficient of variation to output 
 2016-12-23 Henry Helgen updated to Python 3.5 syntax including print() and
                         writer = csv.writer(open(opt.output, 'w', newline=''))
 """
@@ -66,6 +68,42 @@ def get_options(args=None):
 
     return opt
 
+def get_aggregate(psumsqn, psumn, pcountn):
+    """
+    get_aggregate - compute mean, variance, standard deviation, coefficient of variation
+    This function is used instead of numpy.mean, numpy.var, numpy.std since the sum, sumsq, and count
+    are available when the function is called. It avoids an extra pass through the list.
+    # note pcountn means the full list n,  not a sample n - 1
+
+    :param sum of squares, sum, count
+    :return: a tuple of floats   average, variance, standard deviation, coefficient of variation
+    """
+    # validate inputs check for count == 0
+    if pcountn == 0:
+        avg, var, std, coefvar = np.nan, np.nan, np.nan, np.nan
+    else:
+        
+        avg = psumn / pcountn # average
+
+        # compute variance from sum squared without knowing mean while summing
+        var = (psumsqn - (psumn * psumn) / pcountn ) / pcountn # variance
+
+        #compute standard deviation
+        if var < 0:
+            std = np.nan
+        else:
+            std = np.sqrt(var) 
+
+        # compute coefficient of variation
+        if avg == 0:
+            coefvar = np.nan
+        else:
+            coefvar = std / avg
+        
+        
+    return avg, var, std, coefvar
+
+
 def proc_file(filepath):
     """
     proc_file - process one .xlsx file
@@ -90,8 +128,8 @@ def proc_file(filepath):
     n = np.zeros(cols, dtype=int) #count
     sums = np.zeros(cols) #sum
     sumssq = np.zeros(cols) #sum of squares
-    blank = np.zeros(cols, dtype=int)
-    bad = np.zeros(cols, dtype=int)
+    blank = np.zeros(cols, dtype=int) #count of blank cells
+    bad = np.zeros(cols, dtype=int) #count of non-numeric cells
     # init. mins/maxs with invalid value for later calc.
     mins = np.zeros(cols) + np.nan
     maxs = np.zeros(cols) + np.nan
@@ -135,11 +173,13 @@ def proc_file(filepath):
     assert sum(n) + sum(blank) + sum(bad) == rows * len(fields)
 
     # rearrange vectors into table form
+    # compute the derived values
     ans = []
     for i in range(len(fields)):
+        avg, var, std, coefvar = get_aggregate(sumssq[i], sums[i], n[i])
         ans.append([
-            filepath, fields[i], sums[i], sumssq[i],
-            mins[i], maxs[i], n[i], blank[i], bad[i]
+            filepath, fields[i], avg, sums[i], sumssq[i],
+            mins[i], maxs[i], n[i], var, std, coefvar, blank[i], bad[i]
         ])
     return ans
 def main():
@@ -158,7 +198,7 @@ def main():
     answers = pool.map(proc_file, files)
 
     fields = [
-        'file', 'field', 'sum', 'sumsq', 'min', 'max', 'n', 'blank', 'bad'
+        'file', 'field', 'average', 'sum', 'sumsq', 'min', 'max', 'n', 'variance', 'std', 'coefvar', 'blank', 'bad'
     ]
 
     # dump results, file open mode 'wb' (write binary) to avoid blank lines
