@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 
 import numpy as np
 
+PYTHON_2 = sys.version_info[0] < 3
 def make_parser():
     """build an argparse.ArgumentParser, don't call this directly,
        call get_options() instead.
@@ -201,15 +202,19 @@ def main():
         'file', 'field', 'average', 'sum', 'sumsq', 'min', 'max', 'n', 'variance', 'std', 'coefvar', 'blank', 'bad'
     ]
 
-    # dump results, file open mode 'wb' (write binary) to avoid blank lines
-    # when Excel reads .csv
-    # wb confuses Python 2.7 versus Python 3.5 TypeError: a bytes-like object is required, not 'str'
-    # changed back to 'w'. added newline='' to avoid blank lines
-    writer = csv.writer(open(opt.output, 'w', newline=''))
-    writer.writerow(fields)
-    for answer in answers:
-        assert len(answer[0]) == len(fields), (len(answer[0]), len(fields))
-        writer.writerows(answer)
+    # csv.writer does its own EOL handling,
+    # see https://docs.python.org/3/library/csv.html#csv.reader
+    if PYTHON_2:
+        output = open(opt.output, 'wb')
+    else:
+        output = open(opt.output, 'w', newline='')
+
+    with output as out:
+        writer = csv.writer(out)
+        writer.writerow(fields)
+        for answer in answers:
+            assert len(answer[0]) == len(fields), (len(answer[0]), len(fields))
+            writer.writerows(answer)
 
 if __name__ == '__main__':
     main()
