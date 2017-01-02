@@ -26,6 +26,12 @@ PYTHON_2 = sys.version_info[0] < 3
 if not PYTHON_2:
     unicode = str
 
+class AttrDict(dict):
+    # http://stackoverflow.com/a/14620633
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
 FIELDS = [  # fields in outout table
     'file', 'field', 'n', 'blank', 'bad', 'min', 'max', 'mean', 'std',
     'sum', 'sumsq', 'variance', 'coefvar'
@@ -137,16 +143,19 @@ def proc_file(filepath):
     fields = [i.value for i in row0]
     cols = len(fields)
 
-    # pre-allocate vectors to store sums / counts
-    data = {'_FILEPATH': filepath, 'field': fields}
-    for field in FIELDS:
-        if field in INT_FIELDS:
-            data[field] = np.zeros(cols, dtype=int)
-        elif field not in STR_FIELDS:
-            data[field] = np.zeros(cols, dtype=float)
-    # init. mins/maxs with invalid value for later calc.
-    data['min'] += np.nan
-    data['max'] += np.nan
+    data = {
+        'filepath': filepath,
+        'fields': {field:AttrDict({f:0 for f in FIELDS}) for field in fields}
+    }
+
+    for field in fields:
+        # init. mins/maxs with invalid value for later calc.
+        data['fields'][field].update(dict(
+            min=np.nan,
+            max=np.nan,
+            field=field,
+            file=filepath,
+        ))
 
     rows = 0
     for row in row_source:
@@ -162,33 +171,34 @@ def proc_file(filepath):
         rows += 1
 
         for cell_n, cell in enumerate(row):
+            d = data['fields'][fields[cell_n]]
             if cell.value is None or unicode(cell.value).strip() == '':
-                data['blank'][cell_n] +=1
+                d.blank +=1
             else:
                 try:
                     x = float(cell.value)
-                    data['sum'][cell_n] += x
-                    data['sumsq'][cell_n] += x*x
-                    data['n'][cell_n] += 1
+                    d.sum += x
+                    d.sumsq += x*x
+                    d.n += 1
                     # min is x if no value seen yet, else min(prev-min, x)
-                    if np.isnan(data['min'][cell_n]):
-                        data['min'][cell_n] = x
+                    if np.isnan(d.min):
+                        d.min = x
                     else:
-                        data['min'][cell_n] = min(data['min'][cell_n], x)
+                        d.min = min(d.min, x)
                     # as for min
-                    if np.isnan(data['max'][cell_n]):
-                        data['max'][cell_n] = x
+                    if np.isnan(d.max):
+                        d.max = x
                     else:
-                        data['max'][cell_n] = max(data['max'][cell_n], x)
+                        d.max = max(d.max, x)
                 except ValueError:
-                    data['bad'][cell_n] += 1
+                    d.bad += 1
 
-    assert sum(data['n']) + sum(data['blank']) + sum(data['bad']) == rows * len(fields)
+    assert sum(d.n+d.blank+d.bad for d in data['fields'].values()) == rows * len(fields)
 
     # compute the derived values
-    for i in range(len(fields)):
-        for k, v in get_aggregate(data['sumsq'][i], data['sum'][i], data['n'][i])._asdict().items():
-            data[k][i] = v
+    for field in data['fields']:
+        d = data['fields'][field]
+        d.update(get_aggregate(d.sumsq, d.sum, d.n)._asdict().items())
 
     return data
 def main():
@@ -217,16 +227,14 @@ def main():
         writer = csv.writer(out)
         writer.writerow(FIELDS)
         for answer in answers:
-            for row in answer:
-                out = [[answer['_FILEPATH']] + [answer[k][i] for k in FIELDS[1:]]
-                       for i in range(len(answer['n']))]
-            if PYTHON_2:
-                writer.writerows(
-                    [unicode(col).encode('utf-8') for col in row]
-                    for row in out
-                )
-            else:
-                writer.writerows(out)
+            for field in answer['fields']:
+                row = [answer['fields'][field][k] for k in FIELDS]
+                if PYTHON_2:
+                    writer.writerow(
+                        [unicode(col).encode('utf-8') for col in row]
+                    )
+                else:
+                    writer.writerow(row)
 
 if __name__ == '__main__':
     main()
