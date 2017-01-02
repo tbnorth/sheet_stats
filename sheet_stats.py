@@ -5,7 +5,7 @@ requires openpyxl and numpy
 
 Terry N. Brown, terrynbrown@gmail.com, Fri Dec 16 13:20:47 2016
 2016-12-26 Henry Helgen added average, variance, standard deviation,
-                        coefficient of variation to output 
+                        coefficient of variation to output
 2016-12-23 Henry Helgen updated to Python 3.5 syntax including print() and
                         writer = csv.writer(open(opt.output, 'w', newline=''))
 """
@@ -25,6 +25,13 @@ import numpy as np
 PYTHON_2 = sys.version_info[0] < 3
 if not PYTHON_2:
     unicode = str
+
+FIELDS = [  # fields in outout table
+    'file', 'field', 'n', 'blank', 'bad', 'min', 'max', 'mean', 'std',
+    'sum', 'sumsq', 'variance', 'coefvar'
+]
+INT_FIELDS = [ 'n', 'blank', 'bad' ]
+STR_FIELDS = [ 'file', 'field' ]
 def make_parser():
     """build an argparse.ArgumentParser, don't call this directly,
        call get_options() instead.
@@ -63,7 +70,7 @@ def get_options(args=None):
     opt = make_parser().parse_args(args)
 
     # modifications / validations go here
-    
+
     if not opt.output:
         print ("No --output supplied")
         exit(10)
@@ -79,32 +86,36 @@ def get_aggregate(psumsqn, psumn, pcountn):
     # note pcountn means the full list n,  not a sample n - 1
 
     :param sum of squares, sum, count
-    :return: a tuple of floats   mean, variance, standard deviation, coefficient of variation
+    :return: a tuple of floats mean, variance, standard deviation, coefficient of variation
     """
+
+    Agg = namedtuple("Agg", "mean variance std coefvar")
+
     # validate inputs check for count == 0
     if pcountn == 0:
-        avg, var, std, coefvar = np.nan, np.nan, np.nan, np.nan
+        result = Agg(np.nan, np.nan, np.nan, np.nan)
     else:
-        
-        avg = psumn / pcountn # mean
+
+        mean = psumn / pcountn # mean
 
         # compute variance from sum squared without knowing mean while summing
-        var = (psumsqn - (psumn * psumn) / pcountn ) / pcountn # variance
+        variance = (psumsqn - (psumn * psumn) / pcountn ) / pcountn
 
         #compute standard deviation
-        if var < 0:
+        if variance < 0:
             std = np.nan
         else:
-            std = np.sqrt(var) 
+            std = np.sqrt(variance)
 
         # compute coefficient of variation
-        if avg == 0:
+        if mean == 0:
             coefvar = np.nan
         else:
-            coefvar = std / avg
-        
-        
-    return avg, var, std, coefvar
+            coefvar = std / mean
+
+        result = Agg(mean, variance, std, coefvar)
+
+    return result
 
 
 def proc_file(filepath):
@@ -118,28 +129,27 @@ def proc_file(filepath):
     print (filepath)
 
     # get the first sheet
-    wb = load_workbook(filename=filepath, read_only=True)
-    sheets = wb.get_sheet_names()
-    ws = wb[sheets[0]]
-    row_source = ws.rows
+    book = load_workbook(filename=filepath, read_only=True)
+    sheets = book.get_sheet_names()
+    sheet = book[sheets[0]]
+    row_source = sheet.rows
     row0 = next(row_source)
     # get field names from the first row
     fields = [i.value for i in row0]
-
     cols = len(fields)
 
     # pre-allocate vectors to store sums / counts
-    n = np.zeros(cols, dtype=int) #count
-    sums = np.zeros(cols) #sum
-    sumssq = np.zeros(cols) #sum of squares
-    blank = np.zeros(cols, dtype=int) #count of blank cells
-    bad = np.zeros(cols, dtype=int) #count of non-numeric cells
+    data = {'_FILEPATH': filepath, 'field': fields}
+    for field in FIELDS:
+        if field in INT_FIELDS:
+            data[field] = np.zeros(cols, dtype=int)
+        elif field not in STR_FIELDS:
+            data[field] = np.zeros(cols, dtype=float)
     # init. mins/maxs with invalid value for later calc.
-    mins = np.zeros(cols) + np.nan
-    maxs = np.zeros(cols) + np.nan
+    data['min'] += np.nan
+    data['max'] += np.nan
 
     rows = 0
-
     for row in row_source:
 
         if rows % 1000 == 0:  # feedback every 1000 rows
@@ -154,38 +164,34 @@ def proc_file(filepath):
 
         for cell_n, cell in enumerate(row):
             if cell.value is None or unicode(cell.value).strip() == '':
-                blank[cell_n] +=1
+                data['blank'][cell_n] +=1
             else:
                 try:
                     x = float(cell.value)
-                    sums[cell_n] += x
-                    sumssq[cell_n] += x*x
-                    n[cell_n] += 1
+                    data['sum'][cell_n] += x
+                    data['sumsq'][cell_n] += x*x
+                    data['n'][cell_n] += 1
                     # min is x if no value seen yet, else min(prev-min, x)
-                    if np.isnan(mins[cell_n]):
-                        mins[cell_n] = x
+                    if np.isnan(data['min'][cell_n]):
+                        data['min'][cell_n] = x
                     else:
-                        mins[cell_n] = min(mins[cell_n], x)
+                        data['min'][cell_n] = min(data['min'][cell_n], x)
                     # as for min
-                    if np.isnan(maxs[cell_n]):
-                        maxs[cell_n] = x
+                    if np.isnan(data['max'][cell_n]):
+                        data['max'][cell_n] = x
                     else:
-                        maxs[cell_n] = max(maxs[cell_n], x)
+                        data['max'][cell_n] = max(data['max'][cell_n], x)
                 except ValueError:
-                    bad[cell_n] += 1
+                    data['bad'][cell_n] += 1
 
-    assert sum(n) + sum(blank) + sum(bad) == rows * len(fields)
+    assert sum(data['n']) + sum(data['blank']) + sum(data['bad']) == rows * len(fields)
 
-    # rearrange vectors into table form
     # compute the derived values
-    ans = []
     for i in range(len(fields)):
-        avg, var, std, coefvar = get_aggregate(sumssq[i], sums[i], n[i])
-        ans.append([
-            filepath, fields[i], avg, sums[i], sumssq[i],
-            mins[i], maxs[i], n[i], var, std, coefvar, blank[i], bad[i]
-        ])
-    return ans
+        for k, v in get_aggregate(data['sumsq'][i], data['sum'][i], data['n'][i])._asdict().items():
+            data[k][i] = v
+
+    return data
 def main():
 
     opt = get_options()
@@ -201,10 +207,6 @@ def main():
     # process file list with processor pool
     answers = pool.map(proc_file, files)
 
-    fields = [
-        'file', 'field', 'mean', 'sum', 'sumsq', 'min', 'max', 'n', 'variance', 'std', 'coefvar', 'blank', 'bad'
-    ]
-
     # csv.writer does its own EOL handling,
     # see https://docs.python.org/3/library/csv.html#csv.reader
     if PYTHON_2:
@@ -214,16 +216,18 @@ def main():
 
     with output as out:
         writer = csv.writer(out)
-        writer.writerow(fields)
+        writer.writerow(FIELDS)
         for answer in answers:
-            assert len(answer[0]) == len(fields), (len(answer[0]), len(fields))
+            for row in answer:
+                out = [[answer['_FILEPATH']] + [answer[k][i] for k in FIELDS[1:]]
+                       for i in range(len(answer['n']))]
             if PYTHON_2:
                 writer.writerows(
                     [unicode(col).encode('utf-8') for col in row]
-                    for row in answer
+                    for row in out
                 )
             else:
-                writer.writerows(answer)
+                writer.writerows(out)
 
 if __name__ == '__main__':
     main()
