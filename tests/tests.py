@@ -37,19 +37,19 @@ def get_answers(filepath):
     """
 
     # get the field name from the first sheet
-    wb = load_workbook(filename=filepath, read_only=True, data_only=True)
-    sheets = wb.get_sheet_names()
-    ws = wb[sheets[0]]
-    row0 = next(ws.rows)
+    book = load_workbook(filename=filepath, read_only=True, data_only=True)
+    sheets = book.get_sheet_names()
+    sheet = book[sheets[0]]
+    row0 = next(sheet.rows)
     fields = [i.value for i in row0]
 
     # empty dict for each field
     result = {k:{} for k in fields}
 
     # get the results from the second sheet
-    ws = wb[sheets[1]]
+    sheet = book[sheets[1]]
     count = 0
-    for row in ws.rows:
+    for row in sheet.rows:
         count += 1
         values = [i.value for i in row]
         parameter = values[-1]  # min, mean etc.
@@ -59,7 +59,14 @@ def get_answers(filepath):
 
     return result
 
+@contextmanager
+def mk_temp_dir():
+    """context manager for tempfile.mkdtemp()"""
+    path = tempfile.mkdtemp()
+    yield path
+    shutil.rmtree(path)
 class TestSheetStats(unittest.TestCase):
+    """Test(s) for sheet_stats.py"""
     @classmethod
     def setUpClass(cls):
         """Work out file locations"""
@@ -77,41 +84,39 @@ class TestSheetStats(unittest.TestCase):
         easier to do it this way.
         """
 
-        @contextmanager
-        def mk_temp_dir():  # context for tempfile.mkdtemp()
-            path = tempfile.mkdtemp()
-            yield path
-            shutil.rmtree(path)
-
         with mk_temp_dir() as temp_dir:
+
+            # build command line and run sheet_stats.main()
             temp_file = os.path.join(temp_dir, "sheet_stats.csv")
             command_line = [
                 '--output', temp_file,
                 os.path.join(self.test_file_dir, "*.xlsx")
             ]
-            sys.argv[1:] = command_line
+            sys.argv[1:] = command_line  # bad API
+            import sheet_stats
+            sheet_stats.main()
 
-            from sheet_stats import main
-            main()
             checks = 0
             with open(temp_file) as result:
+                # open results, read fields from first line
                 reader = csv.reader(result)
                 fields = next(reader)
+                # iterate through results, reading model answers as needed
                 current_file = None
                 for row in reader:
-                    if row[0] != current_file:
+                    if row[0] != current_file:  # read new model answers
                         current_file = row[0]
                         results = get_answers(current_file)
                         parameters = list(results[next(iter(results))])
-                    blank = int(row[fields.index('blank')])
-                    bad = int(row[fields.index('bad')])
-                    chk_variance = blank == 0 and bad == 0
-                    for parameter, value in zip(fields[2:], row[2:]):  # skip path and field name
+                    # check variance etc. only when blank == bad == 0
+                    chk_variance = int(row[fields.index('blank')]) == 0 and \
+                                   int(row[fields.index('bad')]) == 0
+                    # skip path and field name
+                    for parameter, value in zip(fields[2:], row[2:]):
                         field = row[1].decode('utf-8') if PYTHON_2 else row[1]
                         check = parameter in parameters  # skip blank, bad, etc.
-                        check = check and (
-                            # Excel include blanks in variance calc., so skip those cases
-                            chk_variance or
+                        check = check and (  # Excel include blanks in variance calc.,
+                            chk_variance or  # so skip those cases
                             parameter not in ('std', 'variance', 'coefvar')
                         )
                         if check:
@@ -123,7 +128,8 @@ class TestSheetStats(unittest.TestCase):
                                     results[field][parameter], value
                                 )
                             )
-            print(checks)
+            self.assertEqual(checks, 90, "Expected 90 comparisons")
+
 
 if __name__ == '__main__':
     unittest.main()
