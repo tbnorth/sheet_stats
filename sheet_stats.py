@@ -4,6 +4,7 @@ sheet_stats.py - report column stats for spreadsheets
 requires openpyxl and numpy
 
 Terry N. Brown, terrynbrown@gmail.com, Fri Dec 16 13:20:47 2016
+2017-01-02 Henry Helgen added dof=1 default
 2016-12-26 Henry Helgen added average, variance, standard deviation,
                         coefficient of variation to output 
 2016-12-23 Henry Helgen updated to Python 3.5 syntax including print() and
@@ -68,25 +69,29 @@ def get_options(args=None):
 
     return opt
 
-def get_aggregate(psumsqn, psumn, pcountn):
+def get_aggregate(psumsqn, psumn, pcountn, pdof=1):
     """
     get_aggregate - compute mean, variance, standard deviation, coefficient of variation
     This function is used instead of numpy.mean, numpy.var, numpy.std since the sum, sumsq, and count
     are available when the function is called. It avoids an extra pass through the list.
-    # note pcountn means the full list n,  not a sample n - 1
+    # note pcountn means the full list n,  not a sample n - 1. The degree of freedom defaults to n-1
+      to match the value that Oracle variance uses. Notice the use of n and n-1
+      Naive algorithm from https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+        Var = (SumSq − (Sum × Sum) / n) / (n − 1)
 
-    :param sum of squares, sum, count
+
+    :param sum of squares, sum, count, degree of freedom defaults to n-1 for sample, not n
     :return: a tuple of floats   average, variance, standard deviation, coefficient of variation
     """
     # validate inputs check for count == 0
-    if pcountn == 0:
+    if (pcountn - pdof) <= 0:
         avg, var, std, coefvar = np.nan, np.nan, np.nan, np.nan
     else:
         
-        avg = psumn / pcountn # average
+        avg = psumn / (pcountn) # average uses n not n-1
 
         # compute variance from sum squared without knowing mean while summing
-        var = (psumsqn - (psumn * psumn) / pcountn ) / pcountn # variance
+        var = (psumsqn - (psumn * psumn) / (pcountn) ) / (pcountn - pdof) # variance
 
         #compute standard deviation
         if var < 0:
