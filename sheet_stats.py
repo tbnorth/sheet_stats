@@ -47,7 +47,7 @@ def make_parser():
 
     requiredNamed = parser.add_argument_group('required named arguments')
 
-    requiredNamed.add_argument("--output", nargs=1,
+    requiredNamed.add_argument("--output",
         help="Path to .csv file for output, will be overwritten",
         metavar='FILE'
     )
@@ -74,7 +74,6 @@ def get_options(args=None):
     if not opt.output:
         print ("No --output supplied")
         exit(10)
-    opt.output = opt.output[0]
 
     return opt
 
