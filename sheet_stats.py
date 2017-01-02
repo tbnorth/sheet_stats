@@ -16,18 +16,20 @@ import glob
 import multiprocessing
 import os
 import sys
-from collections import namedtuple, defaultdict
+from collections import namedtuple
+from math import sqrt, isnan
+NAN = float('NAN')
 
 from openpyxl import load_workbook
-
-import numpy as np
 
 PYTHON_2 = sys.version_info[0] < 3
 if not PYTHON_2:
     unicode = str
 
 class AttrDict(dict):
-    # http://stackoverflow.com/a/14620633
+    """allow d.attr instead of d['attr']
+    http://stackoverflow.com/a/14620633
+    """
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
@@ -36,8 +38,6 @@ FIELDS = [  # fields in outout table
     'file', 'field', 'n', 'blank', 'bad', 'min', 'max', 'mean', 'std',
     'sum', 'sumsq', 'variance', 'coefvar'
 ]
-INT_FIELDS = [ 'n', 'blank', 'bad' ]
-STR_FIELDS = [ 'file', 'field' ]
 def make_parser():
     """build an argparse.ArgumentParser, don't call this directly,
        call get_options() instead.
@@ -51,9 +51,9 @@ def make_parser():
         help="Files to process, '*' patterns expanded."
     )
 
-    requiredNamed = parser.add_argument_group('required named arguments')
+    required_named = parser.add_argument_group('required named arguments')
 
-    requiredNamed.add_argument("--output",
+    required_named.add_argument("--output",
         help="Path to .csv file for output, will be overwritten",
         metavar='FILE'
     )
@@ -78,16 +78,19 @@ def get_options(args=None):
     # modifications / validations go here
 
     if not opt.output:
-        print ("No --output supplied")
+        print("No --output supplied")
         exit(10)
 
     return opt
 
 def get_aggregate(psumsqn, psumn, pcountn):
     """
-    get_aggregate - compute mean, variance, standard deviation, coefficient of variation
-    This function is used instead of numpy.mean, numpy.var, numpy.std since the sum, sumsq, and count
-    are available when the function is called. It avoids an extra pass through the list.
+    get_aggregate - compute mean, variance, standard deviation,
+    coefficient of variation This function is used instead of
+    numpy.mean, numpy.var, numpy.std since the sum, sumsq, and count are
+    available when the function is called. It avoids an extra pass
+    through the list.
+
     # note pcountn means the full list n,  not a sample n - 1
 
     :param sum of squares, sum, count
@@ -98,7 +101,7 @@ def get_aggregate(psumsqn, psumn, pcountn):
 
     # validate inputs check for count == 0
     if pcountn == 0:
-        result = Agg(np.nan, np.nan, np.nan, np.nan)
+        result = Agg(NAN, NAN, NAN, NAN)
     else:
 
         mean = psumn / pcountn # mean
@@ -108,13 +111,13 @@ def get_aggregate(psumsqn, psumn, pcountn):
 
         #compute standard deviation
         if variance < 0:
-            std = np.nan
+            std = NAN
         else:
-            std = np.sqrt(variance)
+            std = sqrt(variance)
 
         # compute coefficient of variation
         if mean == 0:
-            coefvar = np.nan
+            coefvar = NAN
         else:
             coefvar = std / mean
 
@@ -131,7 +134,7 @@ def proc_file(filepath):
     :return: list of lists, rows of info. as expected in main()
     """
 
-    print (filepath)
+    print(filepath)
 
     # get the first sheet
     book = load_workbook(filename=filepath, read_only=True)
@@ -141,7 +144,6 @@ def proc_file(filepath):
     row0 = next(row_source)
     # get field names from the first row
     fields = [i.value for i in row0]
-    cols = len(fields)
 
     data = {
         'filepath': filepath,
@@ -151,8 +153,8 @@ def proc_file(filepath):
     for field in fields:
         # init. mins/maxs with invalid value for later calc.
         data['fields'][field].update(dict(
-            min=np.nan,
-            max=np.nan,
+            min=NAN,
+            max=NAN,
             field=field,
             file=filepath,
         ))
@@ -161,7 +163,7 @@ def proc_file(filepath):
     for row in row_source:
 
         if rows % 1000 == 0:  # feedback every 1000 rows
-            print (rows)
+            print(rows)
             # Much cleaner to exit by creating a file called "STOP" in the
             # local directory than to try and use Ctrl-C, when using
             # multiprocessing.  Save time by checking only every 1000 rows.
@@ -173,7 +175,7 @@ def proc_file(filepath):
         for cell_n, cell in enumerate(row):
             d = data['fields'][fields[cell_n]]
             if cell.value is None or unicode(cell.value).strip() == '':
-                d.blank +=1
+                d.blank += 1
             else:
                 try:
                     x = float(cell.value)
@@ -181,12 +183,12 @@ def proc_file(filepath):
                     d.sumsq += x*x
                     d.n += 1
                     # min is x if no value seen yet, else min(prev-min, x)
-                    if np.isnan(d.min):
+                    if isnan(d.min):
                         d.min = x
                     else:
                         d.min = min(d.min, x)
                     # as for min
-                    if np.isnan(d.max):
+                    if isnan(d.max):
                         d.max = x
                     else:
                         d.max = max(d.max, x)
@@ -202,7 +204,7 @@ def proc_file(filepath):
 
     return data
 def main():
-
+    """main() - when invoked directly"""
     opt = get_options()
 
     # pass filenames through glob() to expand "2017_*.xlsx" etc.
