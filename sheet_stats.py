@@ -203,9 +203,12 @@ def proc_file(filepath):
         d.update(get_aggregate(d.sumsq, d.sum, d.n)._asdict().items())
 
     return data
-def main():
-    """main() - when invoked directly"""
-    opt = get_options()
+def get_answers(opt):
+    """get_answers - process files
+
+    :param argparse.Namespace opt: options
+    :return: list of answers from proc_file
+    """
 
     # pass filenames through glob() to expand "2017_*.xlsx" etc.
     files = []
@@ -216,7 +219,25 @@ def main():
     pool = multiprocessing.Pool(multiprocessing.cpu_count()-1)
 
     # process file list with processor pool
-    answers = pool.map(proc_file, files)
+    return pool.map(proc_file, files)
+def get_table_rows(answers):
+    """get_table_rows - generator - convert get_answers() output to table format
+
+    :param list answers: output from get_answers()
+    :return: list of rows suitable for csv.writer
+    """
+    yield FIELDS
+    for answer in answers:
+        for field in answer['fields']:
+            row = [answer['fields'][field][k] for k in FIELDS]
+            if PYTHON_2:
+                yield [unicode(col).encode('utf-8') for col in row]
+            else:
+                yield row
+
+def main():
+    """main() - when invoked directly"""
+    opt = get_options()
 
     # csv.writer does its own EOL handling,
     # see https://docs.python.org/3/library/csv.html#csv.reader
@@ -227,16 +248,8 @@ def main():
 
     with output as out:
         writer = csv.writer(out)
-        writer.writerow(FIELDS)
-        for answer in answers:
-            for field in answer['fields']:
-                row = [answer['fields'][field][k] for k in FIELDS]
-                if PYTHON_2:
-                    writer.writerow(
-                        [unicode(col).encode('utf-8') for col in row]
-                    )
-                else:
-                    writer.writerow(row)
+        for row in get_table_rows(get_answers(opt)):
+            writer.writerow(row)
 
 if __name__ == '__main__':
     main()
