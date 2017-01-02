@@ -13,14 +13,12 @@ import unittest
 
 from contextlib import contextmanager
 
-import numpy as np
-
 from openpyxl import load_workbook
 
 PYTHON_2 = sys.version_info[0] < 3
 
-def get_answers(filepath):
-    """get_answers - get answers for field parameters (mean, min, max etc.)
+def get_results(filepath):
+    """get_results - get answers for field parameters (mean, min, max etc.)
     from a test spreadsheet.  Result looks like:
 
         {'fieldA': {
@@ -65,6 +63,16 @@ def mk_temp_dir():
     path = tempfile.mkdtemp()
     yield path
     shutil.rmtree(path)
+def isclose(a, b):
+    """isclose - compare to floats of close to equality
+
+    :param float a: first float
+    :param float b: second float
+    :return: True if close else False
+    """
+
+    # copied from numpy
+    return abs(a-b) <= (1e-8+1e-5*abs(b))
 class TestSheetStats(unittest.TestCase):
     """Test(s) for sheet_stats.py"""
     @classmethod
@@ -82,6 +90,8 @@ class TestSheetStats(unittest.TestCase):
         Bad form to test so much in one "unit" test, but sheet_stats.py
         (a) runs on streams of data and (b) uses multiprocessing, so
         easier to do it this way.
+
+        This test tests the output CSV file
         """
 
         with mk_temp_dir() as temp_dir:
@@ -92,7 +102,7 @@ class TestSheetStats(unittest.TestCase):
                 '--output', temp_file,
                 os.path.join(self.test_file_dir, "*.xlsx")
             ]
-            sys.argv[1:] = command_line  # bad API
+            sys.argv[1:] = command_line
             import sheet_stats
             sheet_stats.main()
 
@@ -106,7 +116,7 @@ class TestSheetStats(unittest.TestCase):
                 for row in reader:
                     if row[0] != current_file:  # read new model answers
                         current_file = row[0]
-                        results = get_answers(current_file)
+                        results = get_results(current_file)
                         parameters = list(results[next(iter(results))])
                     # check variance etc. only when blank == bad == 0
                     chk_variance = int(row[fields.index('blank')]) == 0 and \
@@ -122,7 +132,7 @@ class TestSheetStats(unittest.TestCase):
                         if check:
                             checks += 1
                             self.assertTrue(
-                                np.isclose(results[field][parameter], float(value)),
+                                isclose(results[field][parameter], float(value)),
                                 msg="%s %s %s %s" % (
                                     current_file, parameter,
                                     results[field][parameter], value
@@ -130,6 +140,28 @@ class TestSheetStats(unittest.TestCase):
                             )
             self.assertEqual(checks, 90, "Expected 90 comparisons")
 
+    def test_get_answers(self):
+        """Test get_answers()"""
+
+        import sheet_stats
+        answers = sheet_stats.get_answers(
+            files=[os.path.join(self.test_file_dir, "*.xlsx")]
+        )
+        checks = 0
+        for answer in answers:
+            results = get_results(answer['filepath'])
+            for field, d in answer['fields'].items():
+                result = results[field]
+                chk_variance = d.bad == 0 and d.blank == 0  # see test_sheet_stats()
+                for param in result:
+                    if chk_variance or param not in ('std', 'variance', 'coefvar'):
+                        checks += 1
+                        self.assertTrue(
+                            isclose(result[param], d[param]),
+                            "%s %s %s %s %s" % (answer['filepath'], field, param, result[param], d[param])
+                        )
+
+        self.assertEqual(checks, 90, "Expected 90 comparisons")
 
 if __name__ == '__main__':
     unittest.main()

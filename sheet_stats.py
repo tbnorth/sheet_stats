@@ -203,12 +203,15 @@ def proc_file(filepath):
         d.update(get_aggregate(d.sumsq, d.sum, d.n)._asdict().items())
 
     return data
-def get_answers(opt):
+def get_answers(opt=None, **kwargs):
     """get_answers - process files
 
     :param argparse.Namespace opt: options
     :return: list of answers from proc_file
     """
+
+    if opt is None:  # API call rather than command line
+        opt = type("opt", (), kwargs)
 
     # pass filenames through glob() to expand "2017_*.xlsx" etc.
     files = []
