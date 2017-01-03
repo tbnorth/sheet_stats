@@ -26,6 +26,11 @@ PYTHON_2 = sys.version_info[0] < 3
 if not PYTHON_2:
     unicode = str
 
+FIELDS = [  # fields in outout table
+    'file', 'field', 'n', 'blank', 'bad', 'min', 'max', 'mean', 'std',
+    'sum', 'sumsq', 'variance', 'coefvar'
+]
+
 class AttrDict(dict):
     """allow d.attr instead of d['attr']
     http://stackoverflow.com/a/14620633
@@ -34,10 +39,7 @@ class AttrDict(dict):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
-FIELDS = [  # fields in outout table
-    'file', 'field', 'n', 'blank', 'bad', 'min', 'max', 'mean', 'std',
-    'sum', 'sumsq', 'variance', 'coefvar'
-]
+
 def make_parser():
     """build an argparse.ArgumentParser, don't call this directly,
        call get_options() instead.
@@ -125,7 +127,6 @@ def get_aggregate(psumsqn, psumn, pcountn):
 
     return result
 
-
 def proc_file(filepath):
     """
     proc_file - process one .xlsx file
@@ -203,6 +204,7 @@ def proc_file(filepath):
         d.update(get_aggregate(d.sumsq, d.sum, d.n)._asdict().items())
 
     return data
+
 def get_answers(opt=None, **kwargs):
     """get_answers - process files
 
@@ -223,6 +225,7 @@ def get_answers(opt=None, **kwargs):
 
     # process file list with processor pool
     return pool.map(proc_file, files)
+
 def get_table_rows(answers):
     """get_table_rows - generator - convert get_answers() output to table format
 
@@ -256,4 +259,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
