@@ -16,6 +16,7 @@ import glob
 import multiprocessing
 import os
 import sys
+import time
 from collections import namedtuple
 from math import sqrt, isnan
 NAN = float('NAN')
@@ -169,6 +170,7 @@ def proc_file(filepath):
             # local directory than to try and use Ctrl-C, when using
             # multiprocessing.  Save time by checking only every 1000 rows.
             if os.path.exists("STOP"):
+                print("Process aborting because of './STOP' file.")
                 return
 
         rows += 1
@@ -252,10 +254,12 @@ def main():
     else:
         output = open(opt.output, 'w', newline='')
 
+    start = time.time()
     with output as out:
         writer = csv.writer(out)
         for row in get_table_rows(get_answers(opt)):
             writer.writerow(row)
+    print("%d seconds" % (time.time()-start))
 
 if __name__ == '__main__':
     main()
