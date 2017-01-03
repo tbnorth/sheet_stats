@@ -62,7 +62,8 @@ def mk_temp_dir():
     """context manager for tempfile.mkdtemp()"""
     path = tempfile.mkdtemp()
     yield path
-    shutil.rmtree(path)
+    # rmtree fails on Windows with "used by another process"
+    shutil.rmtree(path, ignore_errors=True)
 def isclose(a, b):
     """isclose - compare to floats of close to equality
 
