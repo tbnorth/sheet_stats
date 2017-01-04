@@ -233,34 +233,26 @@ def main():
             if db_field is None:
                 missing.append(xl_field)
                 continue
-            print("%s'%s':" % (indent*1, xl_field))
+            print("%s %s -> %s:" % (indent*1, xl_field, db_field))
             for stat in dbstats[db_field]:
                 if stat in xlstats[xl_field] and \
                    stat not in SKIP_STATS:
                     print "%s%s: %s vs %s" % (
                         indent*2, stat,
-                        dbstats[db_field][stat], xlstats[xl_field][stat])
+                        xlstats[xl_field][stat], dbstats[db_field][stat])
 
-        if missing:
-            missing.sort()
-            print("%sMissing from db:" % indent*1)
-            print('\n'.join(textwrap.wrap(
-                ' '.join(missing),
-                initial_indent=indent*2,
-                subsequent_indent=indent*2
-            )))
+        # things in DB not in Excel
         missed = [i for i in available if i not in x2d.values()]
-        if missed:
-            missed.sort()
-            print("%sMissing from Excel file:" % indent*1)
-            print('\n'.join(textwrap.wrap(
-                ' '.join(missed),
-                initial_indent=indent*2,
-                subsequent_indent=indent*2
-            )))
-
-    #D for i in sorted(x2d):
-    #D     print i, x2d[i]
+        # show things missing on either end
+        for miss, name in (missing, 'db'), (missed, 'Excel file'):
+            if miss:
+                missing.sort()
+                print("%sMissing from %s:" % (indent*1, name))
+                print('\n'.join(textwrap.wrap(
+                    ' '.join(miss),
+                    initial_indent=indent*2,
+                    subsequent_indent=indent*2
+                )))
 
 if __name__ == '__main__':
     main()
