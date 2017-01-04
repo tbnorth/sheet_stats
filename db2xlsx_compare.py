@@ -9,8 +9,14 @@ import json
 import os
 import sys
 import textwrap
+import time
 from collections import namedtuple, defaultdict
 from hashlib import sha1
+
+CLIPBOARD_SQL = True
+if CLIPBOARD_SQL:
+    from PyQt4 import QtGui, QtCore, Qt
+    __app = Qt.QApplication(sys.argv)
 
 QUERIES_DIR = 'queries'
 SHEET_STATS = 'l_priv_dba.csv'
@@ -20,19 +26,41 @@ LEG_TO_XLSX = {  # map survey legs to XLSX files
 }
 
 XLSX_TO_FIELD = {
-    'SpCond': 'SpCond',
-    'Fluor': 'Fluor',
-    'DDLat': 'DDLat',
-    'DDLong': 'DDLong',
-    'Depth': 'Depth',
+    'Accnt/Dcnt':      'accnt/dcnt',
+    'BAttn':           ['BAttn_370', 'BAttn_660', 'Battn_370', 'Battn_660'],
+    'DDLat':           'DDLat',
+    'DDLong':          'DDLong',
+    'Depth':           'Depth',
+    'Design_km':       'Design_km',
+    'Fluor':           'Fluor',
+    'SpCond':          'SpCond',
+    'Temp':            'Temp',
+    'UTC':             'UTC_Time',
+    'Zdens':           'Zdens',
+    'ZugDW':           ['ZugDW', 'Zug_DW'],
+    '%Xmiss':          'Xmiss_660',
+    'mM/L_NO3':        'NO3',
+    'ShpSpd_Cmputd':   'ship_spd',
+    'TOF_speed':       'tof_spd',
+    'GO_flwmtr_speed': 'flwmtr_spd',
 }
+# add size bins and oversize bins
 for um in range(105, 1925, 5):
     name = "%dum" % um
     XLSX_TO_FIELD[name] = name
+for n in range(1, 11):
+    XLSX_TO_FIELD["OVR%d" % n] = "Ovr%d_ESD" % n
+# turn all entries into a list
+XLSX_TO_FIELD = {k:(v if isinstance(v, list) else [v])
+                 for k,v in XLSX_TO_FIELD.items()}
 
 # compare 'n', 'mean' etc., but not these:
-SKIP_FIELDS = [
+SKIP_STATS = [
     'field',
+]
+
+EXTRA_FIELDS = [
+    'DDLat', 'DDLong', 'Depth', 'Design_km', 'UTC_Time',
 ]
 
 def run_query(sql):
@@ -42,6 +70,8 @@ def run_query(sql):
     :return: Oracle JSON export structure
     """
 
+    clipboard = Qt.QApplication.clipboard()
+
     if not os.path.exists(QUERIES_DIR):
         os.mkdir(QUERIES_DIR)
     sql_hash = sha1(sql).hexdigest()
@@ -49,61 +79,74 @@ def run_query(sql):
     json_path = os.path.abspath(json_path)
     open(r"d:\scratch\delete\sql.sql", 'w').write(sql)
     if not os.path.exists(json_path):
-        print("\n\n%s\n\n" % sql)
-        print("Execute SQL and save as '%s'" % json_path)
-        print("Press return to continue")
-        raw_input()
+        sql_path = os.path.join(QUERIES_DIR, sql_hash+'.sql')
+        open(sql_path, 'w').write(sql)
+        if CLIPBOARD_SQL:
+            Qt.QApplication.processEvents()
+            print("Execute SQL on clipboard, then copy JSON output")
+            clipboard.setText(sql)
+            json_txt = sql
+            while json_txt == sql:
+                Qt.QApplication.processEvents()
+                json_txt = str(clipboard.text())
+                time.sleep(0.5)
+            json_txt = str(clipboard.text())
+            json.loads(json_txt)  # check it loads
+            open(json_path, 'wb').write(json_txt)
+        else:
+            print("\n\n%s\n\n" % sql)
+            print("Execute SQL and save as '%s'" % json_path)
+            print("Press return to continue")
+            raw_input()
     return json.load(open(json_path))
 
-def main():
+def get_measures(survey, leg):
+    """get_measures - get measures in DB for a leg
 
-    # read sheet stats
-    reader = csv.reader(open(SHEET_STATS))
-    fields = next(reader)
-    # CSV as list of dicts
-    stats_in = [{k:v for k,v in zip(fields, row)} for row in reader]
-    # reform to file -> field -> stats keyed dicts
-    stats = defaultdict(lambda: dict())
-    for stat in stats_in:
-        stats[stat['file']][stat['field']] = stat
+    Checks that for measures with non-unique names, only one
+    is used within a leg (doesn't mean it's the right one, but
+    the case where more than one is present is not handled).
 
-    indent = '    '
+    :param int survey: survery id
+    :param int leg: leg id
+    :return: dict of dicts
+    """
 
-    for survey, leg in LEG_TO_XLSX:
-        # FIXME, should check some list for things already QA'ed
-
-        file_ = LEG_TO_XLSX[survey, leg]
-        print ("%s%s" % (indent*0, file_))
-
-        # first, check only one of each measure in this leg
-        sql = """
+    sql = """
 with measures as (
-select distinct {survey} as survey, {leg} as leg, measure_name, measure_id,
-       sort_order
+select distinct {survey} as survey, {leg} as leg,
+       measure_name, measure_id, sort_order
   from nearshore.survey
        join nearshore.tow using (survey_id)
        join nearshore.tow_measurement using (tow_id)
        join nearshore.measurement using (measure_id)
- where survey_id = 13 and
-       leg_loop = 1 and
-       measure_name in ({fields})
+ where survey_id = {survey} and leg_loop = {leg}
 )
-select /*json*/ survey, leg, measure_name, sort_order, count(*) as n from measures
+select /*json*/ survey, leg, measure_name, sort_order,
+       count(*) as n
+  from measures
  group by survey, leg, measure_name, sort_order
-;""".format(survey=survey, leg=leg, fields=','.join("'%s'" % i 
-            for i in XLSX_TO_FIELD.values()))
+;""".format(survey=survey, leg=leg)
 
-        measures = run_query(sql)
+    measures = run_query(sql)
 
-        for measure in measures['items']:
-            if measure['n'] != 1:
-                raise Exception()
+    # first, check only one of each measure in this leg
+    for measure in measures['items']:
+        if measure['n'] != 1:
+            raise Exception()
 
-        # now index by name
-        measures = {i['measure_name']:i for i in measures['items']}
+    # now index by name
+    return {i['measure_name']:i for i in measures['items']}
 
-        # now get field stats
-        sql = """
+def get_db_stats(survey, leg):
+    """get_db_stats - get field stats from the DB
+
+    :param int survey: survery id
+    :param int leg: leg id
+    :return: dict of dicts
+    """
+
+    sql = """
 select /*json*/ {survey} as survey, {leg} as leg,
        measure_name as field,
        count(*) as n, avg(measure_value) as mean,
@@ -116,11 +159,9 @@ select /*json*/ {survey} as survey, {leg} as leg,
        leg_loop = {leg}
  group by measure_name
 """
-        # measure_name in ({fields})
 
-
-        for extra in 'DDLat', 'DDLong', 'Depth':
-            sql += """
+    for extra in EXTRA_FIELDS:
+        sql += """
 union all
 select /*json*/ {{survey}} as survey, {{leg}} as leg,
        '{extra}' as field,
@@ -132,20 +173,55 @@ select /*json*/ {{survey}} as survey, {{leg}} as leg,
        leg_loop = {{leg}}
 """.format(extra=extra)
 
-        sql = sql.format(survey=survey, leg=leg, 
-            fields=','.join("'%s'" % i
-                            for i in XLSX_TO_FIELD.values()))
+    sql = sql.format(survey=survey, leg=leg)
 
-        dbstats = run_query(sql)
-        dbstats = {i['field']:i for i in dbstats['items']}
+    return {i['field']:i for i in run_query(sql)['items']}
+
+def main():
+
+    # read sheet stats
+    reader = csv.reader(open(SHEET_STATS))
+    fields = next(reader)
+    # CSV as list of dicts
+    stats_in = [{k:v for k,v in zip(fields, row)} for row in reader]
+    # reform to file -> field -> stats keyed dicts
+    xlstats = defaultdict(lambda: dict())
+    for stat in stats_in:
+        xlstats[stat['file']][stat['field']] = stat
+
+    indent = '    '
+
+    for survey, leg in LEG_TO_XLSX:
 
         xl_file = LEG_TO_XLSX[(survey, leg)]
+
+        # FIXME, should check some list for things already QA'ed
+
+        print ("%s%s" % (indent*0, xl_file))
+
+        measures = get_measures(survey, leg)
+
+        dbstats = get_db_stats(survey, leg)
+
+        xlstats = xlstats[xl_file]
+
+        # find *one* db field for each xl field
+        x2d = {}
+        available = list(measures) + EXTRA_FIELDS
+        for xl_field in xlstats:
+            candidates = XLSX_TO_FIELD.get(xl_field, [])
+            present = [i for i in candidates if i in available]
+            if len(present) > 1:
+                raise Exception()
+            elif len(present) == 1:
+                x2d[xl_field] = present[0]
+
         missing = []
 
         # pre-pass to get sort order
         ordered = []
-        for xl_field in sorted(stats[xl_file]):
-            db_field = XLSX_TO_FIELD.get(xl_field)
+        for xl_field in xlstats:
+            db_field = x2d.get(xl_field)
             if db_field is not None and db_field in measures:
                 ordered.append((measures[db_field]['sort_order'], xl_field))
             else:
@@ -153,18 +229,18 @@ select /*json*/ {{survey}} as survey, {{leg}} as leg,
         ordered.sort()
 
         for xl_field in [i[1] for i in ordered]:
-            db_field = XLSX_TO_FIELD.get(xl_field)
+            db_field = x2d.get(xl_field)
             if db_field is None:
                 missing.append(xl_field)
                 continue
             print("%s'%s':" % (indent*1, xl_field))
             for stat in dbstats[db_field]:
-                if stat in SKIP_FIELDS:
-                    continue
-                if stat in stats[xl_file][xl_field]:
+                if stat in xlstats[xl_field] and \
+                   stat not in SKIP_STATS:
                     print "%s%s: %s vs %s" % (
                         indent*2, stat,
-                        dbstats[db_field][stat], stats[xl_file][xl_field][stat])
+                        dbstats[db_field][stat], xlstats[xl_field][stat])
+
         if missing:
             missing.sort()
             print("%sMissing from db:" % indent*1)
@@ -173,8 +249,20 @@ select /*json*/ {{survey}} as survey, {{leg}} as leg,
                 initial_indent=indent*2,
                 subsequent_indent=indent*2
             )))
+        missed = [i for i in available if i not in x2d.values()]
+        if missed:
+            missed.sort()
+            print("%sMissing from Excel file:" % indent*1)
+            print('\n'.join(textwrap.wrap(
+                ' '.join(missed),
+                initial_indent=indent*2,
+                subsequent_indent=indent*2
+            )))
 
+    #D for i in sorted(x2d):
+    #D     print i, x2d[i]
 
 if __name__ == '__main__':
     main()
+
 
