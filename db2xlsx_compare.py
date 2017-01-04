@@ -13,6 +13,9 @@ import time
 from collections import namedtuple, defaultdict
 from hashlib import sha1
 
+MatchError = namedtuple("MatchError",
+    "survey leg xl_file xl_field db_field stat xl_val db_val")
+
 CLIPBOARD_SQL = True
 if CLIPBOARD_SQL:
     from PyQt4 import QtGui, QtCore, Qt
@@ -45,14 +48,49 @@ XLSX_TO_FIELD = {
     'GO_flwmtr_speed': 'flwmtr_spd',
 }
 # add size bins and oversize bins
+FIELD_PREC = {}
 for um in range(105, 1925, 5):
     name = "%dum" % um
     XLSX_TO_FIELD[name] = name
+    FIELD_PREC[name] = 3
 for n in range(1, 11):
     XLSX_TO_FIELD["OVR%d" % n] = "Ovr%d_ESD" % n
+    FIELD_PREC["Ovr%d_ESD" % n] = 3
 # turn all entries into a list
 XLSX_TO_FIELD = {k:(v if isinstance(v, list) else [v])
                  for k,v in XLSX_TO_FIELD.items()}
+
+FIELD_PREC.update({
+    'accnt/dcnt': 3,
+    'BAttn_370': 3,
+    'DDLat': 3,
+    'DDLong': 3,
+    'Depth': 3,
+    'Design_km': 3,
+    'Fluor': 3,
+    'SpCond': 3,
+    'Temp': 3,
+    'UTC_Time': 3,
+    'Zdens': 3,
+    'ZugDW': 3,
+    'Xmiss_660': 3,
+    'NO3': 3,
+    'ship_spd': 3,
+    'tof_spd': 3,
+    'flwmtr_spd': 3,
+
+    'DDLat': 5,
+    'DDLong': 5,
+    'Depth': 3,
+    'Design_km': 3,
+    'UTC_Time': 3,
+})
+# add entries for variants
+for variants in XLSX_TO_FIELD.values():
+    FIELD_PREC.update({
+        k:FIELD_PREC[variants[0]]
+        for k in variants[1:]
+    })
 
 # compare 'n', 'mean' etc., but not these:
 SKIP_STATS = [
@@ -177,6 +215,25 @@ select /*json*/ {{survey}} as survey, {{leg}} as leg,
 
     return {i['field']:i for i in run_query(sql)['items']}
 
+def prec_match(a, b, prec, stat):
+    """
+    prec_match - check a == b at prec decimal places
+
+    :param float a: first value to check
+    :param float b: second value to check
+    :param int prec: number of decimal places to match at
+    :param str stat: stat (n, mean, etc.) being compared
+    :return: bool
+    """
+
+    a = float(a)
+    b = float(b)
+
+    if stat == 'n':
+        return a == b
+
+    return abs(a - b) <= pow(10., -prec)
+
 def main():
 
     # read sheet stats
@@ -190,6 +247,7 @@ def main():
         xlstats[stat['file']][stat['field']] = stat
 
     indent = '    '
+    match_errors = []
 
     for survey, leg in LEG_TO_XLSX:
 
@@ -237,9 +295,18 @@ def main():
             for stat in dbstats[db_field]:
                 if stat in xlstats[xl_field] and \
                    stat not in SKIP_STATS:
-                    print "%s%s: %s vs %s" % (
-                        indent*2, stat,
-                        xlstats[xl_field][stat], dbstats[db_field][stat])
+                    a = xlstats[xl_field][stat]
+                    b = dbstats[db_field][stat]
+                    prec = FIELD_PREC[db_field]
+                    text = "%s%s: %s vs %s" % (indent*2, stat, a, b)
+                    neg_b = -b if db_field == 'Depth' else b
+                    if not prec_match(a, neg_b, prec, stat):
+                        text = 'X'+text[1:]
+                        match_errors.append(MatchError(
+                            survey, leg, xl_file, xl_field, db_field,
+                            stat, a, b
+                        ))
+                    print(text)
 
         # things in DB not in Excel
         missed = [i for i in available if i not in x2d.values()]
@@ -253,6 +320,18 @@ def main():
                     initial_indent=indent*2,
                     subsequent_indent=indent*2
                 )))
+                for i in miss:
+                    match_errors.append(MatchError(
+                        survey, leg, xl_file,
+                        i if name != 'db' else '',
+                        i if name == 'db' else '',
+                        "missing in other", '', ''
+                    ))
+
+    print len(match_errors), "mismatches"
+    writer = csv.writer(open("match_errors.csv", 'wb'))
+    writer.writerow(MatchError._fields)
+    writer.writerows(match_errors)
 
 if __name__ == '__main__':
     main()
