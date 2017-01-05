@@ -29,6 +29,7 @@ LEG_TO_XLSX = {  # map survey legs to XLSX files
 }
 
 XLSX_TO_FIELD = {
+    'AvgSmplVol':      'avg_smpl_vol',
     'Accnt/Dcnt':      'accnt/dcnt',
     'BAttn':           ['BAttn_370', 'BAttn_660', 'Battn_370', 'Battn_660'],
     'DDLat':           'DDLat',
@@ -62,6 +63,7 @@ XLSX_TO_FIELD = {k:(v if isinstance(v, list) else [v])
 
 FIELD_PREC.update({
     'accnt/dcnt': 3,
+    'avg_smpl_vol': 3,
     'BAttn_370': 3,
     'DDLat': 3,
     'DDLong': 3,
@@ -323,8 +325,8 @@ def main():
                 for i in miss:
                     match_errors.append(MatchError(
                         survey, leg, xl_file,
-                        i if name != 'db' else '',
                         i if name == 'db' else '',
+                        i if name != 'db' else '',
                         "missing in other", '', ''
                     ))
 
