@@ -36,24 +36,29 @@ for k in list(LEG_TO_XLSX):  # expand leg ranges
         del LEG_TO_XLSX[k]
 
 XLSX_TO_FIELD = {
-    'AvgSmplVol':      'avg_smpl_vol',
-    'Accnt/Dcnt':      'accnt/dcnt',
-    'BAttn':           ['BAttn_370', 'BAttn_660', 'Battn_370', 'Battn_660'],
-    'DDLat':           'DDLat',
-    'DDLong':          'DDLong',
-    'Depth':           'Depth',
-    'Design_km':       'Design_km',
-    'Fluor':           'Fluor',
-    'SpCond':          'SpCond',
-    'Temp':            'Temp',
-    'UTC':             'UTC_Time',
-    'Zdens':           'Zdens',
-    'ZugDW':           ['ZugDW', 'Zug_DW'],
-    '%Xmiss':          'Xmiss_660',
-    'mM/L_NO3':        'NO3',
-    'ShpSpd_Cmputd':   'ship_spd',
-    'TOF_speed':       'tof_spd',
-    'GO_flwmtr_speed': 'flwmtr_spd',
+    'AvgSmplVol':        'avg_smpl_vol',
+    'Accnt/Dcnt':        'accnt/dcnt',
+    'BAttn':             ['BAttn_370', 'BAttn_660', 'Battn_370', 'Battn_660'],
+    'DDLat':             'DDLat',
+    'DDLong':            'DDLong',
+    'Depth':             'Depth',
+    'Design_km':         'Design_km',
+    'Design Km':         'Design_km',
+    'Fluor':             'Fluor',
+    'SpCond':            'SpCond',
+    'Temp':              'Temp',
+    'UTC':               'UTC_Time',
+    'Zdens':             'Zdens',
+    'ZugDW':             ['ZugDW', 'Zug_DW'],  # ZugDW = 10*Zug
+    '%Xmiss':            'Xmiss_660',
+    'mM/L_NO3':          'NO3',
+    'ShpSpd_Cmputd':     'ship_spd',
+    'TOF_speed':         'tof_spd',
+    'GO_flwmtr_speed':   'flwmtr_spd',
+    'SmplVol(TOF_spd)':  'smplvol_tof',
+    'SmplVol(Ship_spd)': 'smplvol_shpd',
+    'Avg_Smpl_Vol':      'avg_smpl_vol',
+    'TOF Speed':         'tof_spd',
 }
 # add size bins and oversize bins
 FIELD_PREC = {}
@@ -64,35 +69,46 @@ for um in range(105, 1925, 5):
 for n in range(1, 11):
     XLSX_TO_FIELD["OVR%d" % n] = "Ovr%d_ESD" % n
     FIELD_PREC["Ovr%d_ESD" % n] = 3
+unknowns = [
+    'Vlts_NOx', 'etime', 'SmplVol(GO_spd)', 'WtrClmn_crrctd', 'Zug3#318_net',
+    'Distance', 'Leg 4 Dist.', 'Zug_2#170_net', 'None', 'WtrClmn_m_correctd', 
+    'ZugDW_2#170_net', 'Leg 5 Dist.', 'WtrClmn_m_corrected', 'Leg 8 Dist.',
+    'Leg 2 Dist', 'Leg 9 Dist.', 'Leg 3 Dist.', 'Leg 7 Dist.', 'Leg 1 Distance',
+    'Leg 6 Dist.',
+    
+]
+for unknown in unknowns:
+    assert unknown not in XLSX_TO_FIELD, unknown
+    XLSX_TO_FIELD[unknown] = '_NO_CORRESPONDING_MEASURE_'
 # turn all entries into a list
 XLSX_TO_FIELD = {k:(v if isinstance(v, list) else [v])
                  for k,v in XLSX_TO_FIELD.items()}
 
 FIELD_PREC.update({
-    'accnt/dcnt': 3,
-    'avg_smpl_vol': 3,
-    'BAttn_370': 3,
-    'DDLat': 3,
-    'DDLong': 3,
-    'Depth': 3,
-    'Design_km': 3,
-    'Fluor': 3,
-    'SpCond': 3,
-    'Temp': 3,
-    'UTC_Time': 3,
-    'Zdens': 3,
-    'ZugDW': 3,
-    'Xmiss_660': 3,
-    'NO3': 3,
-    'ship_spd': 3,
-    'tof_spd': 3,
-    'flwmtr_spd': 3,
+    'accnt/dcnt': 2,
+    'avg_smpl_vol': 2,
+    'BAttn_370': 2,
+    'DDLat': 2,
+    'DDLong': 2,
+    'Depth': 2,
+    'Design_km': 2,
+    'Fluor': 2,
+    'SpCond': 2,
+    'Temp': 2,
+    'UTC_Time': 2,
+    'Zdens': 1,
+    'ZugDW': 2,
+    'Xmiss_660': 2,
+    'NO3': 2,
+    'ship_spd': 2,
+    'tof_spd': 2,
+    'flwmtr_spd': 2,
 
     'DDLat': 5,
     'DDLong': 5,
-    'Depth': 3,
-    'Design_km': 3,
-    'UTC_Time': 3,
+    'Depth': 2,
+    'Design_km': 2,
+    'UTC_Time': 2,
 })
 # add entries for variants
 for variants in XLSX_TO_FIELD.values():
@@ -277,6 +293,8 @@ def main():
         available = list(measures) + EXTRA_FIELDS
         for xl_field in xlstats:
             candidates = XLSX_TO_FIELD.get(xl_field, [])
+            if not candidates:
+                raise Exception("No candidates for %s" % xl_field)
             present = [i for i in candidates if i in available]
             if len(present) > 1:
                 raise Exception()
@@ -301,6 +319,13 @@ def main():
                 missing.append(xl_field)
                 continue
             print("%s %s -> %s:" % (indent*1, xl_field, db_field))
+            if db_field == 'Depth':
+                a, b = dbstats[db_field]['min'], dbstats[db_field]['max']
+                dbstats[db_field]['min'], dbstats[db_field]['max'] = -b, -a
+                dbstats[db_field]['mean'] *= -1
+            if xlstats[xl_field]['n'] == 1:
+                # work around for sheet_stats.py bug
+                xlstats[xl_field]['mean'] == xlstats[xl_field]['min']
             for stat in dbstats[db_field]:
                 if stat in xlstats[xl_field] and \
                    stat not in SKIP_STATS:
@@ -308,8 +333,8 @@ def main():
                     b = dbstats[db_field][stat]
                     prec = FIELD_PREC[db_field]
                     text = "%s%s: %s vs %s" % (indent*2, stat, a, b)
-                    neg_b = -b if db_field == 'Depth' else b
-                    if not prec_match(a, neg_b, prec, stat):
+                    # neg_b = -b if db_field == 'Depth' else b
+                    if not prec_match(a, b, prec, stat):
                         text = 'X'+text[1:]
                         match_errors.append(MatchError(
                             survey, leg, xl_file, xl_field, db_field,
@@ -323,7 +348,7 @@ def main():
         for miss, name in (missing, 'db'), (missed, 'Excel file'):
             if miss:
                 missing.sort()
-                print("%sMissing from %s:" % (indent*1, name))
+                print("X%sMissing from %s:" % (indent[:-1], name))
                 print('\n'.join(textwrap.wrap(
                     ' '.join(miss),
                     initial_indent=indent*2,
