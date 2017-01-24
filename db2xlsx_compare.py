@@ -27,7 +27,14 @@ SHEET_STATS = 'd_dba.csv'
 LEG_TO_XLSX = {  # map survey legs to XLSX files
     (13, 1): r"d:\large\dba_nearshore_data\GB_Leg1.xlsx",
     (11, (1,9)): r"d:\large\dba_nearshore_data\LE_Aug_Leg%d.xlsx",
+    (12, (1,10)): r"d:\large\dba_nearshore_data\LE_Sep_Leg%d.xlsx",
 }
+"""
+select distinct begin_date, end_date, lake_cd, survey_id, leg_loop
+  from nearshore.tow
+       join nearshore.survey using (survey_id)
+ order by lake_cd, begin_date
+"""
 
 for k in list(LEG_TO_XLSX):  # expand leg ranges
     if isinstance(k[1], tuple):
@@ -70,12 +77,34 @@ for n in range(1, 11):
     XLSX_TO_FIELD["OVR%d" % n] = "Ovr%d_ESD" % n
     FIELD_PREC["Ovr%d_ESD" % n] = 3
 unknowns = [
-    'Vlts_NOx', 'etime', 'SmplVol(GO_spd)', 'WtrClmn_crrctd', 'Zug3#318_net',
-    'Distance', 'Leg 4 Dist.', 'Zug_2#170_net', 'None', 'WtrClmn_m_correctd', 
-    'ZugDW_2#170_net', 'Leg 5 Dist.', 'WtrClmn_m_corrected', 'Leg 8 Dist.',
-    'Leg 2 Dist', 'Leg 9 Dist.', 'Leg 3 Dist.', 'Leg 7 Dist.', 'Leg 1 Distance',
+    'Distance',
+    'Leg 1 Dist',
+    'Leg 1 Dist.',
+    'Leg 1 Distance',
+    'Leg 2 Dist',
+    'Leg 3 Dist.',
+    'Leg 4 Dist',
+    'Leg 4 Dist.',
+    'Leg 5 Dist',
+    'Leg 5 Dist.',
     'Leg 6 Dist.',
-    
+    'Leg 7 Dist.',
+    'Leg 7 Dist',
+    'Leg 8 Dist.',
+    'Leg 9 Dist.',
+    'Leg 10 Dist.',
+    'None',
+    'SmplVol(GO_spd)',
+    'Vlts_NOx',
+    'WtrClmn_crrctd',
+    'WtrClmn_m',
+    'WtrClmn_m_Corrected',
+    'WtrClmn_m_correctd',
+    'WtrClmn_m_corrected',
+    'Zug3#318_net',
+    'ZugDW_2#170_net',
+    'Zug_2#170_net',
+    'etime',
 ]
 for unknown in unknowns:
     assert unknown not in XLSX_TO_FIELD, unknown
