@@ -82,6 +82,7 @@ unknowns = [
     'Leg 1 Dist.',
     'Leg 1 Distance',
     'Leg 2 Dist',
+    'Leg 3 Dist',
     'Leg 3 Dist.',
     'Leg 4 Dist',
     'Leg 4 Dist.',
@@ -192,7 +193,7 @@ def run_query(sql):
             raw_input()
     return json.load(open(json_path))
 
-def get_measures(survey, leg):
+def get_measures():
     """get_measures - get measures in DB for a leg
 
     Checks that for measures with non-unique names, only one
@@ -206,31 +207,21 @@ def get_measures(survey, leg):
 
     sql = """
 with measures as (
-select distinct {survey} as survey, {leg} as leg,
+select distinct survey_id as survey, leg_loop as leg,
        measure_name, measure_id, sort_order
   from nearshore.survey
        join nearshore.tow using (survey_id)
        join nearshore.tow_measurement using (tow_id)
        join nearshore.measurement using (measure_id)
- where survey_id = {survey} and leg_loop = {leg}
 )
 select /*json*/ survey, leg, measure_name, sort_order,
        count(*) as n
   from measures
  group by survey, leg, measure_name, sort_order
-;""".format(survey=survey, leg=leg)
+;"""
 
-    measures = run_query(sql)
-
-    # first, check only one of each measure in this leg
-    for measure in measures['items']:
-        if measure['n'] != 1:
-            raise Exception()
-
-    # now index by name
-    return {i['measure_name']:i for i in measures['items']}
-
-def get_db_stats(survey, leg):
+    return run_query(sql)
+def get_db_stats():
     """get_db_stats - get field stats from the DB
 
     :param int survey: survery id
@@ -239,7 +230,7 @@ def get_db_stats(survey, leg):
     """
 
     sql = """
-select /*json*/ {survey} as survey, {leg} as leg,
+select /*json*/ survey_id as survey, leg_loop as leg,
        measure_name as field,
        count(*) as n, avg(measure_value) as mean,
        min(measure_value) as min, max(measure_value) as max
@@ -247,28 +238,25 @@ select /*json*/ {survey} as survey, {leg} as leg,
        join nearshore.tow using (survey_id)
        join nearshore.tow_measurement using (tow_id)
        join nearshore.measurement using (measure_id)
- where survey_id = {survey} and
-       leg_loop = {leg}
- group by measure_name
+ group by survey_id, leg_loop, measure_name
 """
 
     for extra in EXTRA_FIELDS:
         sql += """
 union all
-select /*json*/ {{survey}} as survey, {{leg}} as leg,
+select /*json*/ survey_id as survey, leg_loop as leg,
        '{extra}' as field,
        count(*) as n, avg({extra}) as mean,
        min({extra}) as min, max({extra}) as max
   from nearshore.survey
        join nearshore.tow using (survey_id)
- where survey_id = {{survey}} and
-       leg_loop = {{leg}}
+ group by survey_id, leg_loop
+
 """.format(extra=extra)
 
-    sql = sql.format(survey=survey, leg=leg)
+    # return {i['field']:i for i in run_query(sql)['items']}
 
-    return {i['field']:i for i in run_query(sql)['items']}
-
+    return run_query(sql)
 def prec_match(a, b, prec, stat):
     """
     prec_match - check a == b at prec decimal places
@@ -302,6 +290,23 @@ def main():
 
     indent = '    '
     match_errors = []
+    
+    all_measures = get_measures()
+
+    # first, check only one of each measure in each leg
+    leg_measures = defaultdict(lambda: 0)
+    for measure in all_measures['items']:
+        k = measure['survey'], measure['leg'], measure['measure_name']
+        leg_measures[k] += 1
+    bad_measures = {k:v for k,v in leg_measures.items() if v > 1}
+    if bad_measures:
+        for k,v in bad_measures.items():
+            print k, v
+        raise Exception("Ambiguous measures")
+
+    all_dbstats = get_db_stats()
+    
+    # return {i['field']:i for i in run_query(sql)['items']}
 
     for survey, leg in LEG_TO_XLSX:
 
@@ -311,11 +316,18 @@ def main():
 
         print ("%s%s" % (indent*0, xl_file))
 
-        measures = get_measures(survey, leg)
-
-        dbstats = get_db_stats(survey, leg)
-
         xlstats = xlstats_all[xl_file]
+
+        measures = {
+            measure['measure_name']:measure
+            for measure in all_measures['items']
+            if (measure['survey'], measure['leg']) == (survey, leg)
+        }
+        dbstats = {
+            dbstat['field']:dbstat
+            for dbstat in all_dbstats['items']
+            if (dbstat['survey'], dbstat['leg']) == (survey, leg)
+        }
 
         # find *one* db field for each xl field
         x2d = {}
