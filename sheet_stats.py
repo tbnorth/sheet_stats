@@ -112,11 +112,11 @@ def get_aggregate(psumsqn, psumn, pcountn, pdof=1):
 
     # validate inputs check for count == 0
 
-    if (pcountn - pdof) <= 0:
-        result = Agg(NAN, NAN, NAN, NAN)
+    mean = psumn / (pcountn) if pcountn else NAN
+
+    if pcountn == 0 or (pcountn - pdof) <= 0:
+        result = Agg(mean, NAN, NAN, NAN)
     else:
-        
-        mean = psumn / (pcountn) # mean uses n not n-1
 
         # compute variance from sum squared without knowing mean while summing
         variance = (psumsqn - (psumn * psumn) / (pcountn) ) / (pcountn - pdof) # variance
@@ -148,7 +148,7 @@ def proc_file(filepath):
     print(filepath)
 
     # get the first sheet
-    book = load_workbook(filename=filepath, read_only=True)
+    book = load_workbook(filename=filepath, read_only=True, data_only=True)
     sheets = book.get_sheet_names()
     sheet = book[sheets[0]]
     row_source = sheet.rows
