@@ -204,7 +204,7 @@ def proc_file(filepath):
                         d.max = x
                     else:
                         d.max = max(d.max, x)
-                except ValueError:
+                except ValueError, TypeError:
                     d.bad += 1
 
     assert sum(d.n+d.blank+d.bad for d in data['fields'].values()) == rows * len(fields)
@@ -233,6 +233,10 @@ def get_answers(opt=None, **kwargs):
 
     # create a pool of processors
     pool = multiprocessing.Pool(multiprocessing.cpu_count()-1)
+
+    # try/except isn't blocking float() TypeError in some files
+    files = [i for i in files
+             if "LOPC_2015-05-14_141710SEPMEP_Andrea.xlsx" not in i]
 
     # process file list with processor pool
     return pool.map(proc_file, files)

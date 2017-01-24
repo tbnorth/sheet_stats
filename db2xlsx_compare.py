@@ -22,11 +22,18 @@ if CLIPBOARD_SQL:
     __app = Qt.QApplication(sys.argv)
 
 QUERIES_DIR = 'queries'
-SHEET_STATS = 'l_priv_dba.csv'
+SHEET_STATS = 'd_dba.csv'
 
 LEG_TO_XLSX = {  # map survey legs to XLSX files
-    (13, 1): r"L:\Priv\DBA\nearshore\Data\GB_Leg1.xlsx",
+    (13, 1): r"d:\large\dba_nearshore_data\GB_Leg1.xlsx",
+    (11, (1,9)): r"d:\large\dba_nearshore_data\LE_Aug_Leg%d.xlsx",
 }
+
+for k in list(LEG_TO_XLSX):  # expand leg ranges
+    if isinstance(k[1], tuple):
+        for i in range(k[1][0], k[1][1]+1):
+            LEG_TO_XLSX[(k[0], i)] = LEG_TO_XLSX[k] % i
+        del LEG_TO_XLSX[k]
 
 XLSX_TO_FIELD = {
     'AvgSmplVol':      'avg_smpl_vol',
@@ -244,9 +251,9 @@ def main():
     # CSV as list of dicts
     stats_in = [{k:v for k,v in zip(fields, row)} for row in reader]
     # reform to file -> field -> stats keyed dicts
-    xlstats = defaultdict(lambda: dict())
+    xlstats_all = defaultdict(lambda: dict())
     for stat in stats_in:
-        xlstats[stat['file']][stat['field']] = stat
+        xlstats_all[stat['file']][stat['field']] = stat
 
     indent = '    '
     match_errors = []
@@ -263,7 +270,7 @@ def main():
 
         dbstats = get_db_stats(survey, leg)
 
-        xlstats = xlstats[xl_file]
+        xlstats = xlstats_all[xl_file]
 
         # find *one* db field for each xl field
         x2d = {}
