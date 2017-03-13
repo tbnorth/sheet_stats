@@ -25,9 +25,9 @@ QUERIES_DIR = 'queries'
 SHEET_STATS = 'd_dba.csv'
 
 LEG_TO_XLSX = {  # map survey legs to XLSX files
-    (13, 1): r"d:\large\dba_nearshore_data\GB_Leg1.xlsx",
-    (11, (1,9)): r"d:\large\dba_nearshore_data\LE_Aug_Leg%d.xlsx",
-    (12, (1,10)): r"d:\large\dba_nearshore_data\LE_Sep_Leg%d.xlsx",
+    (13, 1): r"d:\large\dba_nearshore_data\GB_Leg1.xlsx",  # 2010
+    (11, (1,9)): r"d:\large\dba_nearshore_data\LE_Aug_Leg%d.xlsx",  # 2009
+    (12, (1,10)): r"d:\large\dba_nearshore_data\LE_Sep_Leg%d.xlsx",  # 2009
 }
 """
 select distinct begin_date, end_date, lake_cd, survey_id, leg_loop
